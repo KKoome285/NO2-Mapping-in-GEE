@@ -1,0 +1,109 @@
+
+var kenya = ee.FeatureCollection("USDOS/LSIB_SIMPLE/2017")
+  .filter(ee.Filter.eq('country_na', 'Kenya'));
+
+Map.centerObject(kenya, 6);
+
+var startDate = '2023-01-01';
+var endDate = '2023-12-31';
+
+// Load Sentinel-5P TROPOMI NO2 data
+var no2Collection = ee.ImageCollection('COPERNICUS/S5P/NRTI/L3_NO2')
+  .select('tropospheric_NO2_column_number_density')
+  .filterDate(startDate, endDate)
+  .filterBounds(kenya);
+
+var no2Mean = no2Collection.mean();
+
+var no2Kenya = no2Mean.clip(kenya);
+
+var no2Vis = {
+  min: 0,
+  max: 0.00005,  
+  palette: [
+    '#00ff00', '#66ff33', '#99ff66', '#ccff99',
+    '#ffff00', '#ffcc00', '#ff9900', '#ff6600',
+    '#ff3300', '#ff0000', '#cc0000', '#990000'
+  ]
+};
+
+// Add NO2 layer to map
+Map.addLayer(no2Kenya, no2Vis, 'NO2 Tropospheric Column');
+
+// Add Kenya boundaries
+Map.addLayer(kenya, {color: 'black', fillColor: '00000000'}, 'Kenya Boundaries');
+
+// Calculate min and max values for Kenya (for reference only)
+var minMax = no2Kenya.reduceRegion({
+  reducer: ee.Reducer.minMax(),
+  geometry: kenya,
+  scale: 1000,
+  maxPixels: 1e9
+});
+
+var minValue = minMax.get('tropospheric_NO2_column_number_density_min');
+var maxValue = minMax.get('tropospheric_NO2_column_number_density_max');
+
+var legend = ui.Panel({
+  style: {
+    position: 'bottom-left',
+    padding: '8px 15px'
+  }
+});
+
+var legendTitle = ui.Label({
+  value: 'NO2 Concentration (mol/m²)',
+  style: {
+    fontWeight: 'bold',
+    fontSize: '16px',
+    margin: '0 0 4px 0',
+    padding: '0'
+  }
+});
+
+legend.add(legendTitle);
+
+var palette = no2Vis.palette;
+var labels = ['Low', '', '', '', 'Moderate', '', '', '', 'High', '', '', ''];
+
+for (var i = 0; i < palette.length; i++) {
+  var colorBox = ui.Label({
+    style: {
+      backgroundColor: palette[i],
+      padding: '8px',
+      margin: '0 0 4px 0'
+    }
+  });
+  
+  var description = ui.Label({
+    value: labels[i],
+    style: {margin: '0 0 4px 6px'}
+  });
+  
+  var panel = ui.Panel({
+    widgets: [colorBox, description],
+    layout: ui.Panel.Layout.Flow('horizontal')
+  });
+  
+  legend.add(panel);
+}
+
+// Add legend to map
+Map.add(legend);
+
+print('Actual Minimum NO2 value:', minValue);
+print('Actual Maximum NO2 value:', maxValue);
+print('Visualization range: 0 to', maxValue);
+print('Maximum value in scientific notation:', ee.Number(maxValue).format('%.2e'));
+
+var stats = no2Kenya.reduceRegion({
+  reducer: ee.Reducer.mean().combine({
+    reducer2: ee.Reducer.minMax(),
+    sharedInputs: true
+  }),
+  geometry: kenya,
+  scale: 1000,
+  maxPixels: 1e9
+});
+
+print('NO2 Statistics for Kenya:', stats);
